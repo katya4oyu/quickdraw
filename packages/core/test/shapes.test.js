@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import { localBounds, pageBounds, hitShape, marqueeHits, scaleShape, textLayout, drawShape, registerShapeType } from '../src/shapes.js'
+import { localBounds, pageBounds, hitShape, marqueeHits, scaleShape, textLayout, noteLayout, drawShape, registerShapeType } from '../src/shapes.js'
 import { themeOf } from '../src/palette.js'
 import { Store } from '../src/store.js'
 
@@ -126,6 +126,37 @@ describe('text layout', () => {
     const l = textLayout(t)
     expect(l.lines.length).toBeGreaterThan(1)
     expect(l.w).toBe(120)
+  })
+
+  const fixed = (text, w = 120) => textLayout({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text, size: 'm', autosize: false, w, font: 'draw' } })
+
+  it('wraps CJK text, which has no spaces, between characters', () => {
+    const l = fixed('オンボーディングの簡素化とパフォーマンス最適化')
+    expect(l.lines.length).toBeGreaterThan(2)
+    for (const line of l.lines) expect(line.w).toBeLessThanOrEqual(120 + 20) // at most one hanging mark over
+    expect(l.lines.map((x) => x.text).join('')).toBe('オンボーディングの簡素化とパフォーマンス最適化')
+  })
+
+  it('never starts a line with closing punctuation or a small kana', () => {
+    for (let w = 40; w <= 200; w += 7) {
+      for (const line of fixed('これは、テストです。「かっこ」もあります！ちょっと長めのショートカット', w).lines.slice(1)) {
+        expect(line.text, `w=${w}`).not.toMatch(/^[、。」！ょョー]/)
+      }
+    }
+  })
+
+  it('breaks a word wider than the line, and keeps words whole otherwise', () => {
+    const url = fixed('see https://example.com/a/very/long/path/to/somewhere')
+    expect(url.lines.length).toBeGreaterThan(2)
+    for (const line of url.lines) expect(line.w).toBeLessThanOrEqual(120)
+    expect(fixed('aaaa bbbb cccc dddd').lines.flatMap((x) => x.text.trim().split(/\s+/))).toEqual(['aaaa', 'bbbb', 'cccc', 'dddd'])
+  })
+
+  it('wraps a note\'s Japanese text inside the note', () => {
+    const note = { id: 'n', typeName: 'shape', type: 'note', x: 0, y: 0, rot: 0, z: 1, props: { text: 'オンボーディングの簡素化を最優先で進める', color: 'yellow', size: 'm', font: 'draw', scale: 1 } }
+    const l = noteLayout(note)
+    expect(l.lines.length).toBeGreaterThan(1)
+    for (const line of l.lines) expect(line.w).toBeLessThanOrEqual(160 + 20)
   })
 
   it('caches per props object (identity)', () => {
