@@ -138,21 +138,34 @@ export function lineBaseline(font, fontSize, lh) {
 
 // ---- text layout -----------------------------------------------------------
 
+// Line breaks: at spaces; between CJK characters (Chinese, Japanese and Korean
+// are written without spaces); and inside a word wider than the line. Closing
+// punctuation and small kana stay on the line before rather than start one.
+const CJK = '\u2E80-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF\uFF00-\uFFEF'
+const TOKENS = new RegExp(`\\s+|[${CJK}]|[^\\s${CJK}]+`, 'gu')
+const NO_LINE_START = /^[、。，．,.:;!?！？)）\]］｝」』】〕〉》ー…‥ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ]/
+
 function wrapLines(text, font, fontSize, maxW) {
   const ctx = measurer()
   ctx.font = `500 ${fontSize}px ${font}`
+  const width = (s) => ctx.measureText(s).width
   const out = []
   for (const para of String(text ?? '').split('\n')) {
     if (para === '') { out.push({ text: '', w: 0 }); continue }
+    const tokens = []
+    for (const t of para.match(TOKENS)) {
+      if (maxW && t.trim() && t.length > 1 && width(t) > maxW) tokens.push(...Array.from(t)) // too wide: any character may break
+      else tokens.push(t)
+    }
     let line = ''
-    for (const word of para.split(/(\s+)/)) {
-      const test = line + word
-      if (line && maxW && ctx.measureText(test).width > maxW) {
-        out.push({ text: line, w: ctx.measureText(line).width })
-        line = word.trimStart()
+    for (const token of tokens) {
+      const test = line + token
+      if (line && maxW && width(test) > maxW && !NO_LINE_START.test(token)) {
+        out.push({ text: line, w: width(line) })
+        line = token.trimStart()
       } else line = test
     }
-    out.push({ text: line, w: ctx.measureText(line).width })
+    out.push({ text: line, w: width(line) })
   }
   return out
 }
