@@ -120,6 +120,12 @@ export function drawShape(
   shape: ShapeRecord,
   opts: { theme: Theme; store: Store; zoom?: number; ghost?: boolean; onAssetLoad?: () => void }
 ): void
+/**
+ * A copy of a shape with its local geometry scaled by sx, sy about its local origin, as
+ * resizing does (text and notes scale their type; custom types use their `scale`).
+ * The caller repositions x/y.
+ */
+export function scaleShape(shape: ShapeRecord, sx: number, sy: number): ShapeRecord
 /** Point hit-test in page space. */
 export function hitShape(shape: ShapeRecord, px: number, py: number, tol: number, store: Store): boolean
 
