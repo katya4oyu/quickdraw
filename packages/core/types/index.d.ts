@@ -36,7 +36,7 @@ export type ShapeType =
 export interface ShapeRecord {
   id: string
   typeName: 'shape'
-  type: ShapeType
+  type: ShapeType | (string & {}) // custom types: see registerShapeType
   x: number
   y: number
   rot: number
@@ -122,6 +122,20 @@ export function drawShape(
 ): void
 /** Point hit-test in page space. */
 export function hitShape(shape: ShapeRecord, px: number, py: number, tol: number, store: Store): boolean
+
+/** A shape type added by the host, keyed by `shape.type`. */
+export interface CustomShapeType {
+  /** Local (unrotated, origin-relative) bounds. */
+  bounds(shape: ShapeRecord): Bounds
+  /** Draw into a context already in the shape's local space. */
+  draw(ctx: CanvasRenderingContext2D, shape: ShapeRecord, opts: { theme: Theme; store: Store; zoom?: number }): void
+  /** Hit-test a local point; defaults to inside the bounds. */
+  hit?(shape: ShapeRecord, lx: number, ly: number, tol: number): boolean
+  /** Scale local geometry about the origin; defaults to no change. */
+  scale?(shape: ShapeRecord, sx: number, sy: number): ShapeRecord
+}
+/** Register (or replace) a custom shape type for bounds, drawing, hit-testing and scaling. */
+export function registerShapeType(type: string, def: CustomShapeType): void
 
 /**
  * Turn a raw pointer trail ([x, y, pressure, ...] triplets) into a filled

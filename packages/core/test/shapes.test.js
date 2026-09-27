@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import { localBounds, pageBounds, hitShape, marqueeHits, scaleShape, textLayout } from '../src/shapes.js'
+import { localBounds, pageBounds, hitShape, marqueeHits, scaleShape, textLayout, drawShape, registerShapeType } from '../src/shapes.js'
+import { themeOf } from '../src/palette.js'
 import { Store } from '../src/store.js'
 
 const geo = (over = {}, props = {}) => ({
@@ -137,5 +138,40 @@ describe('text layout', () => {
     expect(mk('').lines.length).toBe(1)
     expect(mk('a\nb\nc').lines.length).toBe(3)
     expect(mk('a\nb\nc').h).toBeGreaterThan(mk('a').h)
+  })
+})
+
+describe('custom shape types', () => {
+  const card = (over = {}) => ({ id: 'c1', typeName: 'shape', type: 'test-card', x: 10, y: 10, rot: 0, z: 1, props: { w: 80, h: 40 }, ...over })
+  const calls = []
+  registerShapeType('test-card', {
+    bounds: (s) => ({ x: 0, y: 0, w: s.props.w, h: s.props.h }),
+    draw: (ctx, s) => calls.push(['draw', s.id]),
+    scale: (s, sx) => ({ ...s, props: { ...s.props, w: s.props.w * sx } }),
+  })
+
+  it('supplies bounds, drawing and scaling', () => {
+    expect(pageBounds(card())).toEqual({ x: 10, y: 10, w: 80, h: 40 })
+    const ctx = { save() {}, restore() {}, translate() {}, rotate() {} }
+    drawShape(ctx, card(), { theme: themeOf('light') })
+    expect(calls).toEqual([['draw', 'c1']])
+    expect(scaleShape(card(), 2, 1).props.w).toBe(160)
+  })
+
+  it('hit-tests inside its bounds by default, and marquee-selects on overlap', () => {
+    expect(hitShape(card(), 50, 30, 0)).toBe(true)
+    expect(hitShape(card(), 200, 30, 0)).toBe(false)
+    expect(marqueeHits(card(), { x: 0, y: 0, w: 20, h: 20 })).toBe(true)
+  })
+
+  it('uses its own hit test when given', () => {
+    registerShapeType('test-ring', { bounds: () => ({ x: 0, y: 0, w: 10, h: 10 }), draw() {}, hit: (s, lx) => lx < 2 })
+    expect(hitShape(card({ type: 'test-ring' }), 11, 15, 0)).toBe(true)
+    expect(hitShape(card({ type: 'test-ring' }), 15, 15, 0)).toBe(false)
+  })
+
+  it('leaves unknown types inert', () => {
+    expect(hitShape(card({ type: 'nope' }), 15, 15, 0)).toBe(false)
+    expect(scaleShape(card({ type: 'nope' }), 2, 2).props.w).toBe(80)
   })
 })

@@ -23,10 +23,21 @@ const LABEL_PAD = 12
 // behind it without committing to a color
 const SEMI = { light: 'rgba(249, 247, 241, 0.85)', dark: 'rgba(32, 30, 25, 0.85)' }
 
+// ---- custom shape types -----------------------------------------------------
+// Hosts add shape types without touching this file. def:
+//   bounds(shape)                 -> local bounds { x, y, w, h }
+//   draw(ctx, shape, opts)        ctx in the shape's local space, like the cases below
+//   hit?(shape, lx, ly, tol)      local point; default: inside the bounds
+//   scale?(shape, sx, sy)         -> new shape; default: unchanged
+const customTypes = new Map()
+export function registerShapeType(type, def) { customTypes.set(type, def) }
+
 // ---- local bounds (origin = shape.x/y, unrotated) --------------------------
 
 export function localBounds(shape) {
   const p = shape.props
+  const custom = customTypes.get(shape.type)
+  if (custom) return custom.bounds(shape)
   switch (shape.type) {
     case 'draw':
     case 'highlight': {
@@ -482,6 +493,8 @@ export function drawShape(ctx, shape, opts) {
       }
       break
     }
+    default:
+      customTypes.get(shape.type)?.draw(ctx, shape, opts)
   }
   ctx.restore()
 }
@@ -524,8 +537,14 @@ export function hitShape(shape, px, py, tol, store) {
       const lb = localBounds(shape)
       return l.x >= lb.x - tol && l.x <= lb.x + lb.w + tol && l.y >= lb.y - tol && l.y <= lb.y + lb.h + tol
     }
+    default: {
+      const custom = customTypes.get(shape.type)
+      if (custom?.hit) return custom.hit(shape, l.x, l.y, tol)
+      if (!custom) return false
+      const lb = custom.bounds(shape)
+      return l.x >= lb.x - tol && l.x <= lb.x + lb.w + tol && l.y >= lb.y - tol && l.y <= lb.y + lb.h + tol
+    }
   }
-  return false
 }
 
 const nearEllipseEdge = (l, p, tol) => {
@@ -612,6 +631,6 @@ export function scaleShape(shape, sx, sy) {
       return { ...shape, props: { ...p, scale: Math.max(0.3, (p.scale || 1) * s) } }
     }
     default:
-      return shape
+      return customTypes.get(shape.type)?.scale?.(shape, sx, sy) ?? shape
   }
 }
