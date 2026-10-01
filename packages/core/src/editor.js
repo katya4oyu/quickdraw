@@ -45,6 +45,7 @@ export class Editor {
     this.selection = new Set()
     this.session = null
     this.editing = null // { id, textarea, field: 'text' | 'label' }
+    this.drawnElsewhere = new Set() // shapes an element over the canvas shows on screen (see setDrawnElsewhere)
     this.scribbles = [] // local laser strokes
     this.remoteScribbles = []
     this.remoteScribblesAt = 0
@@ -1529,6 +1530,7 @@ export class Editor {
     for (const s of this.shapesSorted()) {
       const pb = pageBounds(s)
       if (pb.x + pb.w < vis.x || pb.x > vis.x + vis.w || pb.y + pb.h < vis.y || pb.y > vis.y + vis.h) continue
+      if (hideEditing && this.drawnElsewhere.has(s.id)) continue // on screen only, as the textarea's text
       drawShape(ctx, s, {
         theme: this.theme, store: this.store, zoom: cam.z,
         ghost: this.session?.type === 'erasing' && this.session.hits.has(s.id),
@@ -1636,6 +1638,16 @@ export class Editor {
       ctx.fill()
     }
     ctx.restore()
+  }
+
+  // Shapes that an element laid over the canvas shows on screen (an animated
+  // GIF playing, say): the screen does not draw them beneath it; exports and
+  // captures still do. Replaces the previous set.
+  setDrawnElsewhere(ids) {
+    const next = new Set(ids)
+    if (next.size === this.drawnElsewhere.size && [...next].every((id) => this.drawnElsewhere.has(id))) return
+    this.drawnElsewhere = next
+    this.requestRender()
   }
 
   render() {
