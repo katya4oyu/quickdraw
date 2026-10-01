@@ -291,6 +291,8 @@ export class Editor {
 
   // rendering
   requestRender(): void
+  /** Shapes an element laid over the canvas shows on screen (an animated GIF, say): not drawn beneath it on screen; exports and captures still draw them. Replaces the previous set. */
+  setDrawnElsewhere(ids: Iterable<string>): void
   render(): void
   resize(): void
   renderScene(

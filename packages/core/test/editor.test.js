@@ -689,3 +689,24 @@ describe('keyboard help overlay', () => {
     c2.remove()
   })
 })
+
+describe('drawn elsewhere', () => {
+  // a ctx that counts what it is asked to do
+  const counting = () => {
+    let n = 0
+    const ctx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : typeof k === 'string' && k !== 'then' ? () => { n++ } : undefined), set: (t, k, v) => { t[k] = v; return true } })
+    ctx.measureText = (s) => ({ width: String(s).length * 8 })
+    return { ctx, count: () => n }
+  }
+  const draws = (opts) => { const c = counting(); editor.renderScene(c.ctx, { x: 0, y: 0, z: 1 }, 800, 600, { background: false, ...opts }); return c.count() }
+
+  it('leaves out of the screen what an element over the canvas shows, but not out of exports', () => {
+    editor.store.put({ id: 'shape:box', typeName: 'shape', type: 'geo', x: 100, y: 100, rot: 0, z: 1, props: { geo: 'rectangle', w: 120, h: 80, color: 'black', fill: 'none', dash: 'draw', size: 'm', label: '' } })
+    const screen = draws({ hideEditing: true })
+    editor.setDrawnElsewhere(['shape:box'])
+    expect(draws({ hideEditing: true })).toBeLessThan(screen) // the screen leaves it to the element
+    expect(draws({ hideEditing: false })).toBe(screen) // an export or capture draws it
+    editor.setDrawnElsewhere([])
+    expect(draws({ hideEditing: true })).toBe(screen)
+  })
+})
