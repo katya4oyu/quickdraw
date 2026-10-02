@@ -92,8 +92,9 @@ const TIPS = {
 
 // dock buttons in visual order (styles/more/menu ride at the end, always)
 const DOCK_NAMES = ['select', 'hand', 'draw', 'highlight', 'eraser', 'laser', 'line', 'arrow', 'geo', 'text', 'note', 'image']
-// what gives way first as the frame narrows (select and draw never yield)
-const DROP_ORDER = ['hand', 'laser', 'line', 'note', 'image', 'highlight', 'text', 'arrow', 'eraser', 'geo']
+// what gives way first as the frame narrows (select and draw never yield;
+// hand goes last: on a phone it is how people move around the board)
+const DROP_ORDER = ['laser', 'line', 'note', 'image', 'highlight', 'text', 'arrow', 'eraser', 'geo', 'hand']
 
 export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gridControl = true } = {}) {
   const root = editor.container
