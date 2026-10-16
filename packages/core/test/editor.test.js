@@ -255,6 +255,67 @@ describe('text & notes', () => {
     expect(editor.store.shapes().length).toBe(1)
   })
 
+  function placeText(x, y, text) {
+    editor.setTool('text')
+    drag(editor, [[x, y]])
+    const ta = container.querySelector('textarea.qd-text-edit')
+    ta.value = text
+    ta.dispatchEvent(new window.Event('input'))
+    editor._commitText()
+    return editor.store.shapes().find((s) => s.type === 'text')
+  }
+  const editingId = () => editor.editing?.id
+
+  it('tapping the selected text opens it for editing again', () => {
+    const t = placeText(50, 50, 'hello')
+    expect(editor.tool).toBe('select')
+    expect([...editor.selection]).toEqual([t.id])
+    // tap the middle — the edges carry the resize handles
+    const b = editor.selectionBounds()
+    drag(editor, [[b.x + b.w / 2, b.y + b.h / 2]])
+    expect(editingId()).toBe(t.id)
+    expect(container.querySelector('textarea.qd-text-edit').value).toBe('hello')
+  })
+
+  it('a first tap on unselected text only selects it', () => {
+    const t = placeText(50, 50, 'hello')
+    editor.setSelection([])
+    drag(editor, [[55, 50]])
+    expect(editingId()).toBeUndefined()
+    expect([...editor.selection]).toEqual([t.id])
+  })
+
+  it('the text tool edits existing text instead of stacking a new box', () => {
+    const t = placeText(50, 50, 'hello')
+    editor.setTool('text')
+    drag(editor, [[55, 50]])
+    expect(editingId()).toBe(t.id)
+    expect(editor.store.shapes().length).toBe(1)
+  })
+
+  it('a touch or pen double-tap edits text (iPad sends no dblclick)', () => {
+    const t = placeText(50, 50, 'hello')
+    editor.setSelection([])
+    drag(editor, [[55, 50]], { pointerType: 'pen' })
+    drag(editor, [[56, 51]], { pointerType: 'pen' })
+    expect(editingId()).toBe(t.id)
+  })
+
+  it('a touch double-tap on empty board places text', () => {
+    editor.setTool('select')
+    drag(editor, [[300, 300]], { pointerType: 'touch' })
+    drag(editor, [[302, 300]], { pointerType: 'touch' })
+    expect(editingId()).toBeTruthy()
+    expect(editor.store.get(editingId()).type).toBe('text')
+  })
+
+  it('the native dblclick still edits text with a mouse', () => {
+    const t = placeText(50, 50, 'hello')
+    editor.setSelection([])
+    editor._dblClick({ type: 'dblclick', clientX: 55, clientY: 50 })
+    expect(editingId()).toBe(t.id)
+  })
+
   it('notes get the note default color when the pen is on the default ink', () => {
     editor.setTool('note')
     drag(editor, [[50, 50]])
@@ -346,10 +407,10 @@ describe('grid', () => {
   it('rules the frame at the base step, majors every fifth', () => {
     editor.setGrid('lines')
     const ctx = recordingCtx()
-    // 400x200 device px at zoom 1 → 40px steps: 11 columns (0..400), 6 rows
+    // 400x200 device px at zoom 1 → 80px steps: 6 columns (0..400), 3 rows
     editor._drawGrid(ctx, { x: 0, y: 0, z: 1 }, 400, 200, 1)
     const verticals = ctx.calls.filter((c) => c[0] === 'moveTo' && c[2] === 0).map((c) => c[1])
-    expect(verticals.sort((a, b) => a - b)).toEqual([0.5, 40.5, 80.5, 120.5, 160.5, 200.5, 240.5, 280.5, 320.5, 360.5, 400.5])
+    expect(verticals.sort((a, b) => a - b)).toEqual([0.5, 80.5, 160.5, 240.5, 320.5, 400.5])
     // two passes: minor then major, the majors darker
     const strokes = ctx.calls.filter((c) => c[0] === 'stroke')
     expect(strokes.length).toBe(2)
@@ -357,18 +418,30 @@ describe('grid', () => {
     expect(strokes[1][1]).toBe(editor.theme.grid.line.major)
   })
 
-  it('doubles the step as you zoom out, halves it as you zoom in', () => {
-    editor.setGrid('lines')
-    const stepAt = (z) => {
+  it('holds the ink per screen area constant through zoom, with no step', () => {
+    // ink = Σ alpha over the marks drawn, per px (lines) or px² (dots)
+    const inkAt = (grid, z) => {
+      editor.setGrid(grid)
       const ctx = recordingCtx()
-      editor._drawGrid(ctx, { x: 0, y: 0, z }, 800, 400, 1)
-      const xs = [...new Set(ctx.calls.filter((c) => c[0] === 'moveTo' && c[2] === 0).map((c) => c[1]))]
-      xs.sort((a, b) => a - b)
-      return (xs[1] - xs[0]) / z // back to page units
+      const W = grid === 'dots' ? 6000 : 40000
+      const H = grid === 'dots' ? 6000 : 10
+      editor._drawGrid(ctx, { x: 0, y: 0, z }, W, H, 1)
+      let marks = 0, ink = 0
+      for (const c of ctx.calls) {
+        if (c[0] === 'beginPath') marks = 0
+        else if (grid === 'dots' ? c[0] === 'arc' : c[0] === 'moveTo' && c[2] === 0) marks++
+        else if (c[0] === 'stroke' || c[0] === 'fill') ink += marks * c[2]
+      }
+      return grid === 'dots' ? ink / (W * H) : ink / W
     }
-    expect(stepAt(1)).toBe(40)
-    expect(stepAt(0.3)).toBe(80) // doubled once: 80 * 0.3 = 24px on screen
-    expect(stepAt(3)).toBe(20)
+    for (const grid of ['lines', 'dots']) {
+      const base = inkAt(grid, 1)
+      expect(base).toBeGreaterThan(0)
+      // a geometric sweep across several octaves, through every level change
+      for (let z = 0.03; z < 30; z *= 1.07) {
+        expect(Math.abs(inkAt(grid, z) / base - 1)).toBeLessThan(0.03)
+      }
+    }
   })
 
   it('dots mark intersections in one uniform weight and ink', () => {
@@ -376,7 +449,7 @@ describe('grid', () => {
     const ctx = recordingCtx()
     editor._drawGrid(ctx, { x: 0, y: 0, z: 1 }, 400, 200, 1)
     const arcs = ctx.calls.filter((c) => c[0] === 'arc')
-    expect(arcs.length).toBe(11 * 6)
+    expect(arcs.length).toBe(6 * 3)
     const radii = [...new Set(arcs.map((c) => c[3]))]
     expect(radii).toEqual([1.6])
     // dots carry less ink than rules, so they run darker to read as calm
@@ -390,7 +463,7 @@ describe('grid', () => {
     const ctx = recordingCtx()
     editor._drawGrid(ctx, { x: 10, y: 0, z: 1 }, 100, 100, 1)
     const verticals = ctx.calls.filter((c) => c[0] === 'moveTo' && c[2] === 0).map((c) => c[1])
-    expect(verticals.sort((a, b) => a - b)).toEqual([10.5, 50.5, 90.5])
+    expect(verticals.sort((a, b) => a - b)).toEqual([10.5, 90.5])
   })
 })
 
@@ -489,6 +562,32 @@ describe('createQuickdraw UI', () => {
     drawBtn.click()
     expect(board.editor.tool).toBe('draw')
     expect(drawBtn.classList.contains('on')).toBe(true)
+    board.destroy()
+    c2.remove()
+  })
+
+  it('the shape button re-kinds selected shapes and keeps the selection', async () => {
+    const c2 = document.createElement('div')
+    document.body.appendChild(c2)
+    const board = createQuickdraw({ container: c2 })
+    const ed = board.editor
+    ed.setTool('geo')
+    drag(ed, [[10, 10], [110, 60]])
+    const [s] = ed.store.shapes()
+    expect(ed.selection.has(s.id)).toBe(true)
+    c2.querySelector('.qd-dock button[data-name="geo"]').click()
+    expect(ed.tool).toBe('select')
+    expect(ed.selection.has(s.id)).toBe(true)
+    const ellipse = [...c2.querySelectorAll('.qd-geo-pop button')].find((b) => b.title === 'ellipse')
+    expect(c2.querySelector('.qd-geo-pop button.on').title).toBe('rectangle')
+    ellipse.click()
+    expect(ed.store.get(s.id).props.geo).toBe('ellipse')
+    expect(ed.selection.has(s.id)).toBe(true)
+    expect(ed.tool).toBe('select')
+    // with nothing selected it arms the tool as before
+    ed.setSelection([])
+    c2.querySelector('.qd-dock button[data-name="geo"]').click()
+    expect(ed.tool).toBe('geo')
     board.destroy()
     c2.remove()
   })
