@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import { localBounds, pageBounds, hitShape, marqueeHits, scaleShape, textLayout, noteLayout, drawShape, registerShapeType } from '../src/shapes.js'
+import { localBounds, pageBounds, hitShape, marqueeHits, scaleShape, textLayout, noteLayout, drawShape, registerShapeType, geoOutline, resetTextLayouts } from '../src/shapes.js'
 import { themeOf } from '../src/palette.js'
 import { Store } from '../src/store.js'
 
@@ -204,5 +204,31 @@ describe('custom shape types', () => {
   it('leaves unknown types inert', () => {
     expect(hitShape(card({ type: 'nope' }), 15, 15, 0)).toBe(false)
     expect(scaleShape(card({ type: 'nope' }), 2, 2).props.w).toBe(80)
+  })
+})
+
+describe('hand-drawn outlines and text re-measure', () => {
+  const geo = (id, g, w = 200, h = 120) => ({ id, typeName: 'shape', type: 'geo', x: 0, y: 0, rot: 0, props: { geo: g, w, h, dash: 'draw' } })
+
+  it('geoOutline is stable per shape and hugs the box', () => {
+    for (const g of ['rectangle', 'ellipse', 'diamond', 'cloud']) {
+      const o = geoOutline(geo('s:' + g, g))
+      expect(o).toEqual(geoOutline(geo('s:' + g, g)))
+      expect(o.smooth).toBe(g === 'ellipse' || g === 'cloud')
+      for (let i = 0; i < o.pts.length; i += 2) {
+        expect(o.pts[i]).toBeGreaterThan(-3)
+        expect(o.pts[i]).toBeLessThan(203)
+        expect(o.pts[i + 1]).toBeGreaterThan(-3)
+        expect(o.pts[i + 1]).toBeLessThan(123)
+      }
+    }
+  })
+
+  it('resetTextLayouts drops cached layouts so text is measured again', () => {
+    const t = { id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, props: { text: 'Hello', size: 'm', color: 'black' } }
+    const a = textLayout(t)
+    expect(textLayout(t)).toBe(a)
+    resetTextLayouts()
+    expect(textLayout(t)).not.toBe(a)
   })
 })
